@@ -92,6 +92,7 @@ def calculate_rankings(db: dict) -> list[dict]:
                     "total_points": 0,
                     "competitions": 0,
                     "best_finish": 999,
+                    "podiums": {1: 0, 2: 0, 3: 0},
                     "results": [],
                 }
 
@@ -99,6 +100,8 @@ def calculate_rankings(db: dict) -> list[dict]:
             p["total_points"] += pts
             p["competitions"] += 1
             p["best_finish"] = min(p["best_finish"], s["rank"])
+            if s["rank"] in p["podiums"]:
+                p["podiums"][s["rank"]] += 1
             p["results"].append({
                 "comp_id": comp_id,
                 "comp_name": comp["info"]["name"],
@@ -151,7 +154,9 @@ def generate_index_html(
                     <td class="py-3 px-4 text-center font-bold text-indigo-600">{p['total_points']}</td>
                     <td class="py-3 px-4 text-center text-gray-600">{p['competitions']}</td>
                     <td class="py-3 px-4 text-center text-gray-600">{p['avg_points']}</td>
-                    <td class="py-3 px-4 text-center text-gray-600">{p['best_finish']}</td>
+                    <td class="py-3 px-4 text-center font-medium" style="background:#FFD70033">{p['podiums'][1]}</td>
+                    <td class="py-3 px-4 text-center font-medium" style="background:#C0C0C033">{p['podiums'][2]}</td>
+                    <td class="py-3 px-4 text-center font-medium" style="background:#CD7F3233">{p['podiums'][3]}</td>
                 </tr>"""
 
     # Competition list (sorted latest first by date, fallback by ID)
@@ -177,7 +182,7 @@ def generate_index_html(
                             <p class="text-sm text-gray-500 mt-1">{date_str}</p>
                             <p class="text-sm text-gray-400">{location}</p>
                         </div>
-                        <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">{player_count} players</span>
+                        <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">{player_count} pelaajaa</span>
                     </div>
                 </a>"""
 
@@ -186,7 +191,7 @@ def generate_index_html(
     if back_to_current:
         nav_html = f"""
         <nav class="mb-6">
-            <a href="{back_to_current}" class="text-indigo-600 hover:text-indigo-800 text-sm">&larr; Current Season</a>
+            <a href="{back_to_current}" class="text-indigo-600 hover:text-indigo-800 text-sm">&larr; Nykyinen kausi</a>
         </nav>"""
 
     # Previous seasons section
@@ -201,7 +206,7 @@ def generate_index_html(
                 </a>"""
         seasons_html = f"""
         <section class="mt-10">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Previous Seasons</h2>
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Edelliset kaudet</h2>
             <div class="grid gap-3">{season_links}
             </div>
         </section>"""
@@ -218,32 +223,34 @@ def generate_index_html(
     <div class="max-w-5xl mx-auto px-4 py-8">{nav_html}
         <header class="mb-8">
             <h1 class="text-3xl font-bold text-gray-900">Pori Viikkokisa Rankings - {escaped_season}</h1>
-            <p class="text-gray-500 mt-1">Porin Viikkokisat &middot; Updated {_html_escape(db.get('last_updated') or '')}</p>
+            <p class="text-gray-500 mt-1">Porin Viikkokisat &middot; Päivitetty {_html_escape(db.get('last_updated') or '')}</p>
         </header>
 
         <section class="mb-10">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Overall Rankings</h2>
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Kokonaisranking</h2>
             <div class="bg-white rounded-xl shadow-sm overflow-hidden">
                 <table class="w-full">
                     <thead>
                         <tr class="bg-gray-50 text-left text-sm text-gray-500 uppercase tracking-wider">
                             <th class="py-3 px-4 w-12">#</th>
-                            <th class="py-3 px-4">Player</th>
-                            <th class="py-3 px-4 text-center">Points</th>
-                            <th class="py-3 px-4 text-center">Played</th>
-                            <th class="py-3 px-4 text-center">Avg</th>
-                            <th class="py-3 px-4 text-center">Best</th>
+                            <th class="py-3 px-4">Pelaaja</th>
+                            <th class="py-3 px-4 text-center">Pisteet</th>
+                            <th class="py-3 px-4 text-center">Pelatut Kisat</th>
+                            <th class="py-3 px-4 text-center">Piste Keskiarvo</th>
+                            <th class="py-3 px-4 text-center" style="background:#FFD700;color:#7a5c00">1.</th>
+                            <th class="py-3 px-4 text-center" style="background:#C0C0C0;color:#4a4a4a">2.</th>
+                            <th class="py-3 px-4 text-center" style="background:#CD7F32;color:#fff">3.</th>
                         </tr>
                     </thead>
                     <tbody>{ranking_rows}
                     </tbody>
                 </table>
             </div>
-            <p class="text-xs text-gray-400 mt-2">Points: 1st=8, 2nd=6, 3rd=4, 4th=3, 5th=2, 6th+=1</p>
+            <p class="text-xs text-gray-400 mt-2">Pisteet: 1.=8, 2.=6, 3.=4, 4.=3, 5.=2, 6.+=1</p>
         </section>
 
         <section>
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Competitions</h2>
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Kilpailut</h2>
             <div class="grid gap-3">{comp_list}
             </div>
         </section>{seasons_html}
@@ -314,7 +321,7 @@ def generate_competition_html(comp_id: str, comp: dict, rankings: list[dict]) ->
 <body class="bg-gray-50 min-h-screen">
     <div class="max-w-5xl mx-auto px-4 py-8">
         <nav class="mb-6">
-            <a href="../index.html" class="text-indigo-600 hover:text-indigo-800 text-sm">&larr; Back to Rankings</a>
+            <a href="../index.html" class="text-indigo-600 hover:text-indigo-800 text-sm">&larr; Takaisin rankingiin</a>
         </nav>
 
         <header class="mb-8">
@@ -323,20 +330,20 @@ def generate_competition_html(comp_id: str, comp: dict, rankings: list[dict]) ->
                 {"<span>" + date_str + "</span>" if date_str else ""}
                 {"<span>" + time_str + "</span>" if time_str else ""}
                 {"<span>" + location + "</span>" if location else ""}
-                {"<span>Game: " + game_type + "-ball</span>" if game_type else ""}
+                {"<span>Peli: " + game_type + "-ball</span>" if game_type else ""}
             </div>
             {"<p class='mt-2 text-sm text-gray-400'>" + details + "</p>" if details else ""}
         </header>
 
         <section class="mb-10">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Final Standings</h2>
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Lopputulokset</h2>
             <div class="bg-white rounded-xl shadow-sm overflow-hidden">
                 <table class="w-full">
                     <thead>
                         <tr class="bg-gray-50 text-left text-sm text-gray-500 uppercase tracking-wider">
                             <th class="py-2 px-4 w-12">#</th>
-                            <th class="py-2 px-4">Player</th>
-                            <th class="py-2 px-4 text-center">Points</th>
+                            <th class="py-2 px-4">Pelaaja</th>
+                            <th class="py-2 px-4 text-center">Pisteet</th>
                         </tr>
                     </thead>
                     <tbody>{standings_rows}
@@ -346,17 +353,17 @@ def generate_competition_html(comp_id: str, comp: dict, rankings: list[dict]) ->
         </section>
 
         <section>
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Match Results</h2>
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Ottelutulokset</h2>
             <div class="bg-white rounded-xl shadow-sm overflow-hidden">
                 <table class="w-full">
                     <thead>
                         <tr class="bg-gray-50 text-left text-sm text-gray-500 uppercase tracking-wider">
                             <th class="py-2 px-4 w-12"></th>
-                            <th class="py-2 px-4 text-right">Home</th>
-                            <th class="py-2 px-2 text-center w-24">Score</th>
-                            <th class="py-2 px-4">Away</th>
-                            <th class="py-2 px-4 text-center w-16">Table</th>
-                            <th class="py-2 px-4 text-center w-16">Time</th>
+                            <th class="py-2 px-4 text-right">Koti</th>
+                            <th class="py-2 px-2 text-center w-24">Tulos</th>
+                            <th class="py-2 px-4">Vieras</th>
+                            <th class="py-2 px-4 text-center w-16">Pöytä</th>
+                            <th class="py-2 px-4 text-center w-16">Aika</th>
                         </tr>
                     </thead>
                     <tbody>{matches_html}

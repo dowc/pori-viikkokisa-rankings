@@ -5,35 +5,42 @@ Scrapes pool billiard competition results from [tspool.fi](https://tspool.fi) an
 ## Setup
 
 ```bash
-pip install -r requirements.txt
-# or
-pip install requests beautifulsoup4
+uv sync
 ```
+
+Commands are run via `uv run pori` (no need to activate the venv).
 
 ## Usage
 
-### Scrape a single competition
+### Scrape and generate site
 
 ```bash
-python3 tspool_scraper.py 1353
-python3 tspool_scraper.py 1353 --format json
-python3 tspool_scraper.py 1353 --format csv
+uv run pori scrape 1353 1354    # scrape competitions and regenerate site
+uv run pori rebuild              # regenerate site from existing data (no scraping)
 ```
 
-### Generate rankings site
+### Deploy to S3
 
 ```bash
-# Add a new competition and generate site
-python3 generate_site.py 1353
-
-# Add multiple competitions
-python3 generate_site.py 1340 1345 1353
-
-# Regenerate site from existing data (no scraping)
-python3 generate_site.py --rebuild
+uv run pori deploy MY-BUCKET
+uv run pori deploy MY-BUCKET --delete    # also remove stale files
+uv run pori deploy MY-BUCKET --dry-run   # preview without uploading
 ```
 
-### View the site
+### Full pipeline
+
+```bash
+uv run pori run 1353 1354 --bucket MY-BUCKET   # scrape + generate + deploy in one go
+```
+
+### Season management
+
+```bash
+uv run pori season list
+uv run pori season new "Syksy 2026"    # archive current season, start new one
+```
+
+### View the site locally
 
 ```bash
 python3 -m http.server 8080 --directory site
@@ -49,8 +56,10 @@ python3 -m http.server 8080 --directory site
 ## Project structure
 
 ```
+cli.py               # Main entry point (pori command)
 tspool_scraper.py    # Scrapes a single competition from tspool.fi
 generate_site.py     # Builds rankings and generates static HTML
+deploy_s3.py         # Uploads site and data to S3
 data/                # Local JSON database (gitignored)
 site/                # Generated HTML pages (gitignored)
 ```
