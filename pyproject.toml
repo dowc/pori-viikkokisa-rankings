@@ -9,5 +9,11 @@ dependencies = [
 ]
 
 [project.scripts]
-tspool-scrape = "tspool_scraper:main"
-tspool-site = "generate_site:main"
+pori = "cli:main"
+pori-scrape = "tspool_scraper:main"
+pori-site = "generate_site:main"
+pori-deploy = "deploy_s3:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

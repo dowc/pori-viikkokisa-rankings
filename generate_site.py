@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import unicodedata
 from dataclasses import asdict
 from datetime import date
 from pathlib import Path
@@ -24,6 +26,7 @@ from tspool_scraper import scrape_competition
 
 DATA_DIR = Path("data")
 DATA_FILE = DATA_DIR / "competitions.json"
+CONFIG_FILE = DATA_DIR / "config.json"
 SITE_DIR = Path("site")
 COMP_DIR = SITE_DIR / "competitions"
 
@@ -33,6 +36,27 @@ DEFAULT_POINTS = 1
 
 def points_for_rank(rank: int) -> int:
     return POINTS.get(rank, DEFAULT_POINTS)
+
+
+def slugify(name: str) -> str:
+    """'Kevät 2026' -> 'kevat-2026'"""
+    s = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    s = re.sub(r"[^\w\s-]", "", s.lower().strip())
+    return re.sub(r"[-\s]+", "-", s)
+
+
+# ── Config ────────────────────────────────────────────────────────────────────
+
+
+def load_config() -> dict:
+    if CONFIG_FILE.exists():
+        return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    return {"current_season": "Kevät 2026", "seasons": []}
+
+
+def save_config(config: dict) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    CONFIG_FILE.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 # ── Database ─────────────────────────────────────────────────────────────────
@@ -109,7 +133,13 @@ def _html_escape(s: str | None) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
-def generate_index_html(rankings: list[dict], db: dict) -> str:
+def generate_index_html(
+    rankings: list[dict],
+    db: dict,
+    season_name: str = "Kevät 2026",
+    archived_seasons: list[dict] | None = None,
+    back_to_current: str | None = None,
+) -> str:
     """Generate the main rankings page."""
     # Rankings table rows
     ranking_rows = ""
@@ -151,16 +181,43 @@ def generate_index_html(rankings: list[dict], db: dict) -> str:
                     </div>
                 </a>"""
 
+    # Navigation for archived pages
+    nav_html = ""
+    if back_to_current:
+        nav_html = f"""
+        <nav class="mb-6">
+            <a href="{back_to_current}" class="text-indigo-600 hover:text-indigo-800 text-sm">&larr; Current Season</a>
+        </nav>"""
+
+    # Previous seasons section
+    seasons_html = ""
+    if archived_seasons:
+        season_links = ""
+        for s in archived_seasons:
+            season_links += f"""
+                <a href="seasons/{_html_escape(s['slug'])}/index.html"
+                   class="block p-3 rounded-lg border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all">
+                    <span class="font-medium text-gray-900">{_html_escape(s['name'])}</span>
+                </a>"""
+        seasons_html = f"""
+        <section class="mt-10">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Previous Seasons</h2>
+            <div class="grid gap-3">{season_links}
+            </div>
+        </section>"""
+
+    escaped_season = _html_escape(season_name)
+
     return f"""<!DOCTYPE html>
 <html lang="fi">
 <head>
     {TAILWIND_HEAD}
-    <title>Pori Viikkokisa Rankings - Kevät 2026</title>
+    <title>Pori Viikkokisa Rankings - {escaped_season}</title>
 </head>
 <body class="bg-gray-50 min-h-screen">
-    <div class="max-w-5xl mx-auto px-4 py-8">
+    <div class="max-w-5xl mx-auto px-4 py-8">{nav_html}
         <header class="mb-8">
-            <h1 class="text-3xl font-bold text-gray-900">Pori Viikkokisa Rankings - Kevät 2026</h1>
+            <h1 class="text-3xl font-bold text-gray-900">Pori Viikkokisa Rankings - {escaped_season}</h1>
             <p class="text-gray-500 mt-1">Porin Viikkokisat &middot; Updated {_html_escape(db.get('last_updated') or '')}</p>
         </header>
 
@@ -189,7 +246,7 @@ def generate_index_html(rankings: list[dict], db: dict) -> str:
             <h2 class="text-xl font-semibold text-gray-800 mb-4">Competitions</h2>
             <div class="grid gap-3">{comp_list}
             </div>
-        </section>
+        </section>{seasons_html}
     </div>
 </body>
 </html>"""
@@ -317,19 +374,49 @@ def generate_competition_html(comp_id: str, comp: dict, rankings: list[dict]) ->
 
 def generate_site(db: dict) -> None:
     """Generate all static HTML files from the database."""
+    config = load_config()
+    season_name = config["current_season"]
+    archived_seasons = config.get("seasons", [])
+
     SITE_DIR.mkdir(parents=True, exist_ok=True)
     COMP_DIR.mkdir(parents=True, exist_ok=True)
 
     rankings = calculate_rankings(db)
 
     # Main rankings page
-    index_html = generate_index_html(rankings, db)
+    index_html = generate_index_html(
+        rankings, db, season_name, archived_seasons=archived_seasons,
+    )
     (SITE_DIR / "index.html").write_text(index_html, encoding="utf-8")
 
     # Per-competition pages
     for comp_id, comp in db["competitions"].items():
         comp_html = generate_competition_html(comp_id, comp, rankings)
         (COMP_DIR / f"{comp_id}.html").write_text(comp_html, encoding="utf-8")
+
+    # Regenerate archived season sites
+    for season in archived_seasons:
+        slug = season["slug"]
+        season_data_file = DATA_DIR / "seasons" / slug / "competitions.json"
+        if not season_data_file.exists():
+            continue
+
+        season_db = json.loads(season_data_file.read_text(encoding="utf-8"))
+        season_site_dir = SITE_DIR / "seasons" / slug
+        season_comp_dir = season_site_dir / "competitions"
+        season_site_dir.mkdir(parents=True, exist_ok=True)
+        season_comp_dir.mkdir(parents=True, exist_ok=True)
+
+        season_rankings = calculate_rankings(season_db)
+        season_index = generate_index_html(
+            season_rankings, season_db, season["name"],
+            back_to_current="../../index.html",
+        )
+        (season_site_dir / "index.html").write_text(season_index, encoding="utf-8")
+
+        for comp_id, comp in season_db["competitions"].items():
+            comp_html = generate_competition_html(comp_id, comp, season_rankings)
+            (season_comp_dir / f"{comp_id}.html").write_text(comp_html, encoding="utf-8")
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
