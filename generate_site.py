@@ -1,0 +1,377 @@
+"""
+Static HTML site generator for TS-Pool rankings and competition results.
+
+Scrapes new competitions incrementally, accumulates data in a local JSON
+database, and generates static HTML pages with Tailwind CSS.
+
+Usage:
+    python3 generate_site.py 1353              # Add competition and generate site
+    python3 generate_site.py 1340 1345 1353    # Add multiple competitions
+    python3 generate_site.py --rebuild         # Regenerate site from existing data
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from dataclasses import asdict
+from datetime import date
+from pathlib import Path
+
+from tspool_scraper import scrape_competition
+
+# ── Config ───────────────────────────────────────────────────────────────────
+
+DATA_DIR = Path("data")
+DATA_FILE = DATA_DIR / "competitions.json"
+SITE_DIR = Path("site")
+COMP_DIR = SITE_DIR / "competitions"
+
+POINTS = {1: 8, 2: 6, 3: 4, 4: 3, 5: 2}
+DEFAULT_POINTS = 1
+
+
+def points_for_rank(rank: int) -> int:
+    return POINTS.get(rank, DEFAULT_POINTS)
+
+
+# ── Database ─────────────────────────────────────────────────────────────────
+
+
+def load_db() -> dict:
+    if DATA_FILE.exists():
+        return json.loads(DATA_FILE.read_text(encoding="utf-8"))
+    return {"competitions": {}, "last_updated": None}
+
+
+def save_db(db: dict) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    db["last_updated"] = date.today().isoformat()
+    DATA_FILE.write_text(json.dumps(db, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+# ── Rankings calculation ─────────────────────────────────────────────────────
+
+
+def calculate_rankings(db: dict) -> list[dict]:
+    """Aggregate player stats across all competitions."""
+    players: dict[str, dict] = {}
+
+    for comp_id, comp in db["competitions"].items():
+        for s in comp["standings"]:
+            name = s["player"]
+            pts = points_for_rank(s["rank"])
+
+            if name not in players:
+                players[name] = {
+                    "player": name,
+                    "total_points": 0,
+                    "competitions": 0,
+                    "best_finish": 999,
+                    "results": [],
+                }
+
+            p = players[name]
+            p["total_points"] += pts
+            p["competitions"] += 1
+            p["best_finish"] = min(p["best_finish"], s["rank"])
+            p["results"].append({
+                "comp_id": comp_id,
+                "comp_name": comp["info"]["name"],
+                "comp_date": comp["info"].get("date", ""),
+                "rank": s["rank"],
+                "points": pts,
+            })
+
+    ranked = sorted(
+        players.values(),
+        key=lambda p: (-p["total_points"], p["best_finish"], -p["competitions"]),
+    )
+
+    for i, p in enumerate(ranked, 1):
+        p["rank"] = i
+        p["avg_points"] = round(p["total_points"] / p["competitions"], 1) if p["competitions"] else 0
+
+    return ranked
+
+
+# ── HTML templates ───────────────────────────────────────────────────────────
+
+TAILWIND_HEAD = """\
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdn.tailwindcss.com"></script>"""
+
+
+def _html_escape(s: str | None) -> str:
+    if not s:
+        return ""
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def generate_index_html(rankings: list[dict], db: dict) -> str:
+    """Generate the main rankings page."""
+    # Rankings table rows
+    ranking_rows = ""
+    for p in rankings:
+        ranking_rows += f"""
+                <tr class="border-b border-gray-100 hover:bg-gray-50">
+                    <td class="py-3 px-4 font-semibold text-gray-500">{p['rank']}</td>
+                    <td class="py-3 px-4 font-medium text-gray-900">{_html_escape(p['player'])}</td>
+                    <td class="py-3 px-4 text-center font-bold text-indigo-600">{p['total_points']}</td>
+                    <td class="py-3 px-4 text-center text-gray-600">{p['competitions']}</td>
+                    <td class="py-3 px-4 text-center text-gray-600">{p['avg_points']}</td>
+                    <td class="py-3 px-4 text-center text-gray-600">{p['best_finish']}</td>
+                </tr>"""
+
+    # Competition list (sorted latest first by date, fallback by ID)
+    comps_sorted = sorted(
+        db["competitions"].items(),
+        key=lambda x: x[1]["info"].get("date") or "",
+        reverse=True,
+    )
+
+    comp_list = ""
+    for comp_id, comp in comps_sorted:
+        info = comp["info"]
+        date_str = _html_escape(info.get("date") or "")
+        name = _html_escape(info.get("name") or f"Competition {comp_id}")
+        location = _html_escape(info.get("location") or "")
+        player_count = len(comp.get("standings", []))
+        comp_list += f"""
+                <a href="competitions/{comp_id}.html"
+                   class="block p-4 rounded-lg border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="font-semibold text-gray-900">{name}</h3>
+                            <p class="text-sm text-gray-500 mt-1">{date_str}</p>
+                            <p class="text-sm text-gray-400">{location}</p>
+                        </div>
+                        <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">{player_count} players</span>
+                    </div>
+                </a>"""
+
+    return f"""<!DOCTYPE html>
+<html lang="fi">
+<head>
+    {TAILWIND_HEAD}
+    <title>Pori Viikkokisa Rankings - Kevät 2026</title>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-5xl mx-auto px-4 py-8">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">Pori Viikkokisa Rankings - Kevät 2026</h1>
+            <p class="text-gray-500 mt-1">Porin Viikkokisat &middot; Updated {_html_escape(db.get('last_updated') or '')}</p>
+        </header>
+
+        <section class="mb-10">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Overall Rankings</h2>
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                <table class="w-full">
+                    <thead>
+                        <tr class="bg-gray-50 text-left text-sm text-gray-500 uppercase tracking-wider">
+                            <th class="py-3 px-4 w-12">#</th>
+                            <th class="py-3 px-4">Player</th>
+                            <th class="py-3 px-4 text-center">Points</th>
+                            <th class="py-3 px-4 text-center">Played</th>
+                            <th class="py-3 px-4 text-center">Avg</th>
+                            <th class="py-3 px-4 text-center">Best</th>
+                        </tr>
+                    </thead>
+                    <tbody>{ranking_rows}
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-xs text-gray-400 mt-2">Points: 1st=8, 2nd=6, 3rd=4, 4th=3, 5th=2, 6th+=1</p>
+        </section>
+
+        <section>
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Competitions</h2>
+            <div class="grid gap-3">{comp_list}
+            </div>
+        </section>
+    </div>
+</body>
+</html>"""
+
+
+def generate_competition_html(comp_id: str, comp: dict, rankings: list[dict]) -> str:
+    """Generate a detail page for a single competition."""
+    info = comp["info"]
+    name = _html_escape(info.get("name") or f"Competition {comp_id}")
+    date_str = _html_escape(info.get("date") or "")
+    time_str = _html_escape(info.get("time") or "")
+    location = _html_escape(info.get("location") or "")
+    game_type = _html_escape(info.get("game_type") or "")
+    details = _html_escape(info.get("details") or "")
+
+    # Standings with points
+    standings_rows = ""
+    for s in comp.get("standings", []):
+        pts = points_for_rank(s["rank"])
+        standings_rows += f"""
+                <tr class="border-b border-gray-100">
+                    <td class="py-2 px-4 font-semibold text-gray-500">{s['rank']}</td>
+                    <td class="py-2 px-4 text-gray-900">{_html_escape(s['player'])}</td>
+                    <td class="py-2 px-4 text-center font-medium text-indigo-600">+{pts}</td>
+                </tr>"""
+
+    # Match results grouped by round
+    matches_html = ""
+    current_round = ""
+    for m in comp.get("matches", []):
+        if m["round_name"] != current_round:
+            current_round = m["round_name"]
+            matches_html += f"""
+                <tr class="bg-gray-50">
+                    <td colspan="6" class="py-2 px-4 font-semibold text-gray-700 text-sm">{_html_escape(current_round)} (race to {m['race_to']})</td>
+                </tr>"""
+
+        home_cls = "font-semibold" if m.get("winner") == m["home_player"] else ""
+        away_cls = "font-semibold" if m.get("winner") == m["away_player"] else ""
+        home_score_cls = "font-bold text-green-600" if m.get("winner") == m["home_player"] else "text-gray-500"
+        away_score_cls = "font-bold text-green-600" if m.get("winner") == m["away_player"] else "text-gray-500"
+        table_num = m.get("table_number") or ""
+        duration = _html_escape(m.get("duration") or "")
+
+        matches_html += f"""
+                <tr class="border-b border-gray-100 hover:bg-gray-50">
+                    <td class="py-2 px-4 text-gray-400 text-sm">#{m['match_number']}</td>
+                    <td class="py-2 px-4 text-right {home_cls}">{_html_escape(m['home_player'])}</td>
+                    <td class="py-2 px-2 text-center whitespace-nowrap">
+                        <span class="{home_score_cls}">{m['home_score']}</span>
+                        <span class="text-gray-400 mx-1">-</span>
+                        <span class="{away_score_cls}">{m['away_score']}</span>
+                    </td>
+                    <td class="py-2 px-4 {away_cls}">{_html_escape(m['away_player'])}</td>
+                    <td class="py-2 px-4 text-center text-gray-400 text-sm">{table_num}</td>
+                    <td class="py-2 px-4 text-center text-gray-400 text-sm">{duration}</td>
+                </tr>"""
+
+    return f"""<!DOCTYPE html>
+<html lang="fi">
+<head>
+    {TAILWIND_HEAD}
+    <title>{name} - TS-Pool</title>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-5xl mx-auto px-4 py-8">
+        <nav class="mb-6">
+            <a href="../index.html" class="text-indigo-600 hover:text-indigo-800 text-sm">&larr; Back to Rankings</a>
+        </nav>
+
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">{name}</h1>
+            <div class="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-500">
+                {"<span>" + date_str + "</span>" if date_str else ""}
+                {"<span>" + time_str + "</span>" if time_str else ""}
+                {"<span>" + location + "</span>" if location else ""}
+                {"<span>Game: " + game_type + "-ball</span>" if game_type else ""}
+            </div>
+            {"<p class='mt-2 text-sm text-gray-400'>" + details + "</p>" if details else ""}
+        </header>
+
+        <section class="mb-10">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Final Standings</h2>
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                <table class="w-full">
+                    <thead>
+                        <tr class="bg-gray-50 text-left text-sm text-gray-500 uppercase tracking-wider">
+                            <th class="py-2 px-4 w-12">#</th>
+                            <th class="py-2 px-4">Player</th>
+                            <th class="py-2 px-4 text-center">Points</th>
+                        </tr>
+                    </thead>
+                    <tbody>{standings_rows}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section>
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Match Results</h2>
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                <table class="w-full">
+                    <thead>
+                        <tr class="bg-gray-50 text-left text-sm text-gray-500 uppercase tracking-wider">
+                            <th class="py-2 px-4 w-12"></th>
+                            <th class="py-2 px-4 text-right">Home</th>
+                            <th class="py-2 px-2 text-center w-24">Score</th>
+                            <th class="py-2 px-4">Away</th>
+                            <th class="py-2 px-4 text-center w-16">Table</th>
+                            <th class="py-2 px-4 text-center w-16">Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>{matches_html}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</body>
+</html>"""
+
+
+# ── Site generation ──────────────────────────────────────────────────────────
+
+
+def generate_site(db: dict) -> None:
+    """Generate all static HTML files from the database."""
+    SITE_DIR.mkdir(parents=True, exist_ok=True)
+    COMP_DIR.mkdir(parents=True, exist_ok=True)
+
+    rankings = calculate_rankings(db)
+
+    # Main rankings page
+    index_html = generate_index_html(rankings, db)
+    (SITE_DIR / "index.html").write_text(index_html, encoding="utf-8")
+
+    # Per-competition pages
+    for comp_id, comp in db["competitions"].items():
+        comp_html = generate_competition_html(comp_id, comp, rankings)
+        (COMP_DIR / f"{comp_id}.html").write_text(comp_html, encoding="utf-8")
+
+
+# ── CLI ──────────────────────────────────────────────────────────────────────
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Generate TS-Pool rankings site")
+    parser.add_argument("competition_ids", nargs="*", type=int,
+                        help="Competition ID(s) to scrape and add")
+    parser.add_argument("--rebuild", action="store_true",
+                        help="Regenerate site from existing data without scraping")
+    args = parser.parse_args()
+
+    if not args.competition_ids and not args.rebuild:
+        parser.error("Provide competition ID(s) or use --rebuild")
+
+    db = load_db()
+
+    for comp_id in args.competition_ids:
+        if str(comp_id) in db["competitions"]:
+            print(f"Competition {comp_id} already in database, skipping scrape")
+            continue
+
+        print(f"Scraping competition {comp_id}...")
+        result = scrape_competition(comp_id)
+        db["competitions"][str(comp_id)] = {
+            "info": asdict(result.info),
+            "matches": [asdict(m) for m in result.matches],
+            "standings": [asdict(s) for s in result.standings],
+        }
+        print(f"  Added: {result.info.name} ({len(result.standings)} players, {len(result.matches)} matches)")
+
+    save_db(db)
+
+    print("Generating site...")
+    generate_site(db)
+
+    rankings = calculate_rankings(db)
+    print(f"\nSite generated in {SITE_DIR}/")
+    print(f"  Rankings: {len(rankings)} players across {len(db['competitions'])} competitions")
+    print(f"  Open {SITE_DIR / 'index.html'} to view")
+
+
+if __name__ == "__main__":
+    main()

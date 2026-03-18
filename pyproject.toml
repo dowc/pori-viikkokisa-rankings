@@ -1,0 +1,13 @@
+[project]
+name = "tspool-rankings"
+version = "0.1.0"
+description = "Scrape TS-Pool competition results and generate a static rankings site"
+requires-python = ">=3.10"
+dependencies = [
+    "requests",
+    "beautifulsoup4",
+]
+
+[project.scripts]
+tspool-scrape = "tspool_scraper:main"
+tspool-site = "generate_site:main"

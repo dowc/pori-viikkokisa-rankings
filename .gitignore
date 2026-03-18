@@ -1,0 +1,16 @@
+# Generated site
+site/
+
+# Local data
+data/
+
+# Previous output dir
+output/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+dist/
+*.egg-info/
