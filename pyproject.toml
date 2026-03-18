@@ -1,5 +1,5 @@
 [project]
-name = "tspool-rankings"
+name = "pori-viikkokisa-rankings"
 version = "0.1.0"
 description = "Scrape TS-Pool competition results and generate a static rankings site"
 requires-python = ">=3.10"
@@ -13,6 +13,10 @@ pori = "cli:main"
 pori-scrape = "tspool_scraper:main"
 pori-site = "generate_site:main"
 pori-deploy = "deploy_s3:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+only-include = ["cli.py", "generate_site.py", "tspool_scraper.py", "deploy_s3.py"]
 
 [build-system]
 requires = ["hatchling"]
