@@ -30,12 +30,22 @@ CONFIG_FILE = DATA_DIR / "config.json"
 SITE_DIR = Path("site")
 COMP_DIR = SITE_DIR / "competitions"
 
-POINTS = {1: 8, 2: 6, 3: 4, 4: 3, 5: 2}
-DEFAULT_POINTS = 1
-
-
 def points_for_rank(rank: int) -> int:
-    return POINTS.get(rank, DEFAULT_POINTS)
+    if rank == 1:
+        return 8
+    if rank == 2:
+        return 7
+    if rank <= 4:
+        return 6
+    if rank <= 6:
+        return 5
+    if rank <= 8:
+        return 4
+    if rank <= 12:
+        return 3
+    if rank <= 16:
+        return 2
+    return 0
 
 
 def slugify(name: str) -> str:
@@ -239,7 +249,7 @@ def generate_index_html(
                     </tbody>
                 </table>
             </div>
-            <p class="text-xs text-gray-400 mt-2">Points: 1st=8, 2nd=6, 3rd=4, 4th=3, 5th=2, 6th+=1</p>
+            <p class="text-xs text-gray-400 mt-2">Points: 1st=8, 2nd=7, 3rd-4th=6, 5th-6th=5, 7th-8th=4, 9th-12th=3, 13th-16th=2</p>
         </section>
 
         <section>
