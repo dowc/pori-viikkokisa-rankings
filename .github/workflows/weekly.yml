@@ -1,0 +1,31 @@
+name: Weekly update
+
+on:
+  schedule:
+    - cron: '0 18 * * 2'  # Every Tuesday at 18:00 UTC (20:00 Finnish time EEST)
+  workflow_dispatch:        # Allow manual trigger from GitHub UI
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - run: uv sync
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: Fetch data from S3
+        run: aws s3 sync s3://${{ secrets.S3_BUCKET }}/data/ data/
+
+      - name: Discover, scrape and deploy
+        run: uv run pori discover --scrape --bucket ${{ secrets.S3_BUCKET }}

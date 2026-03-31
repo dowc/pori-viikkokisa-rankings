@@ -61,7 +61,7 @@ def slugify(name: str) -> str:
 def load_config() -> dict:
     if CONFIG_FILE.exists():
         return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-    return {"current_season": "Kevät 2026", "seasons": []}
+    return {"current_season": "Kevät 2026", "season_start": None, "season_end": None, "seasons": []}
 
 
 def save_config(config: dict) -> None:
@@ -140,6 +140,17 @@ TAILWIND_HEAD = """\
 <script src="https://cdn.tailwindcss.com"></script>"""
 
 
+def _fmt_date(s: str | None) -> str:
+    """Convert YYYY-MM-DD to Finnish DD.MM.YYYY format."""
+    if not s:
+        return ""
+    try:
+        y, m, d = s.split("-")
+        return f"{int(d)}.{int(m)}.{y}"
+    except (ValueError, AttributeError):
+        return s or ""
+
+
 def _html_escape(s: str | None) -> str:
     if not s:
         return ""
@@ -152,6 +163,7 @@ def generate_index_html(
     season_name: str = "Kevät 2026",
     archived_seasons: list[dict] | None = None,
     back_to_current: str | None = None,
+    season_end: str | None = None,
 ) -> str:
     """Generate the main rankings page."""
     # Rankings table rows
@@ -179,7 +191,7 @@ def generate_index_html(
     comp_list = ""
     for comp_id, comp in comps_sorted:
         info = comp["info"]
-        date_str = _html_escape(info.get("date") or "")
+        date_str = _fmt_date(info.get("date"))
         name = _html_escape(info.get("name") or f"Competition {comp_id}")
         location = _html_escape(info.get("location") or "")
         player_count = len(comp.get("standings", []))
@@ -233,7 +245,7 @@ def generate_index_html(
     <div class="max-w-5xl mx-auto px-4 py-8">{nav_html}
         <header class="mb-8">
             <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Pori Viikkokisa Ranking - {escaped_season}</h1>
-            <p class="text-gray-500 mt-1">Porin Viikkokisat &middot; Päivitetty {_html_escape(db.get('last_updated') or '')}</p>
+            <p class="text-gray-500 mt-1">Porin Viikkokisat{(" &middot; Kausi päättyy " + _fmt_date(season_end)) if season_end else ""} &middot; Päivitetty {_fmt_date(db.get('last_updated'))}</p>
         </header>
 
         <section class="mb-10">
@@ -246,7 +258,7 @@ def generate_index_html(
                             <th class="py-3 px-2 sm:px-4">Pelaaja</th>
                             <th class="py-3 px-2 sm:px-4 text-center">Pisteet</th>
                             <th class="py-3 px-2 sm:px-4 text-center hidden sm:table-cell">Pelatut Kisat</th>
-                            <th class="py-3 px-2 sm:px-4 text-center hidden sm:table-cell">Piste Keskiarvo</th>
+                            <th class="py-3 px-2 sm:px-4 text-center hidden sm:table-cell">Pistekeskiarvo</th>
                             <th class="py-3 px-2 sm:px-4 text-center" style="background:#FFD700;color:#7a5c00">1.</th>
                             <th class="py-3 px-2 sm:px-4 text-center" style="background:#C0C0C0;color:#4a4a4a">2.</th>
                             <th class="py-3 px-2 sm:px-4 text-center" style="background:#CD7F32;color:#fff">3.</th>
@@ -273,7 +285,7 @@ def generate_competition_html(comp_id: str, comp: dict, rankings: list[dict]) ->
     """Generate a detail page for a single competition."""
     info = comp["info"]
     name = _html_escape(info.get("name") or f"Competition {comp_id}")
-    date_str = _html_escape(info.get("date") or "")
+    date_str = _fmt_date(info.get("date"))
     time_str = _html_escape(info.get("time") or "")
     location = _html_escape(info.get("location") or "")
     game_type = _html_escape(info.get("game_type") or "")
@@ -403,6 +415,7 @@ def generate_site(db: dict) -> None:
     # Main rankings page
     index_html = generate_index_html(
         rankings, db, season_name, archived_seasons=archived_seasons,
+        season_end=config.get("season_end"),
     )
     (SITE_DIR / "index.html").write_text(index_html, encoding="utf-8")
 

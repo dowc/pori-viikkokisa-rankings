@@ -15,7 +15,10 @@ Commands are run via `uv run pori` (no need to activate the venv).
 ### Scrape and generate site
 
 ```bash
-uv run pori scrape 1353 1354    # scrape competitions and regenerate site
+uv run pori discover                              # check tspool.fi for new Viikkokisat Pori competitions
+uv run pori discover --scrape                     # check, add, and regenerate site
+uv run pori discover --scrape --bucket MY-BUCKET  # check, add, regenerate, and deploy
+uv run pori scrape 1362 1363     # manually scrape specific competition IDs
 uv run pori rebuild              # regenerate site from existing data (no scraping)
 ```
 
@@ -37,7 +40,7 @@ uv run pori run 1353 1354 --bucket MY-BUCKET   # scrape + generate + deploy in o
 
 ```bash
 uv run pori season list
-uv run pori season new "Syksy 2026"    # archive current season, start new one
+uv run pori season new "Syksy 2026" --start 2026-07-07   # archive current, start new (end date = start + 16 weeks)
 ```
 
 ### View the site locally

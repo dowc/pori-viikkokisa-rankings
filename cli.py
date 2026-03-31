@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import shutil
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 
@@ -100,6 +101,9 @@ def cmd_season_new(args: argparse.Namespace) -> None:
     old_slug = slugify(old_name)
     new_name = args.name
 
+    start = date.fromisoformat(args.start) if args.start else date.today()
+    end = start + timedelta(weeks=16)
+
     # Check for slug collision
     existing_slugs = {s["slug"] for s in config.get("seasons", [])}
     if old_slug in existing_slugs:
@@ -115,6 +119,8 @@ def cmd_season_new(args: argparse.Namespace) -> None:
     # Update config
     config["seasons"].append({"name": old_name, "slug": old_slug})
     config["current_season"] = new_name
+    config["season_start"] = start.isoformat()
+    config["season_end"] = end.isoformat()
     save_config(config)
 
     # Reset current season
@@ -124,7 +130,55 @@ def cmd_season_new(args: argparse.Namespace) -> None:
     print("Regenerating sites...")
     generate_site(load_db())
 
-    print(f"New season '{new_name}' started")
+    print(f"New season '{new_name}' started ({start} – {end})")
+
+
+def cmd_discover(args: argparse.Namespace) -> None:
+    """Find new Viikkokisat Pori competitions not yet in the database."""
+    from tspool_scraper import scrape_listing
+    from generate_site import load_db, generate_site, save_db, calculate_rankings
+    from dataclasses import asdict
+    from tspool_scraper import scrape_competition
+
+    db = load_db()
+    known_ids = set(db["competitions"].keys())
+    max_known_id = max((int(i) for i in known_ids), default=0)
+
+    print(f"Searching tspool.fi for '{args.filter}' (after ID {max_known_id})...")
+    found = scrape_listing(name_filter=args.filter, stop_at_id=max_known_id)
+
+    new = [(cid, name) for cid, name in found if str(cid) not in known_ids]
+
+    if not new:
+        print("No new competitions found.")
+        return
+
+    print(f"Found {len(new)} new competition(s):")
+    for cid, name in new:
+        print(f"  {cid}: {name}")
+
+    if args.scrape:
+        for cid, name in new:
+            print(f"Scraping {cid}: {name}...")
+            result = scrape_competition(cid)
+            db["competitions"][str(cid)] = {
+                "info": asdict(result.info),
+                "matches": [asdict(m) for m in result.matches],
+                "standings": [asdict(s) for s in result.standings],
+            }
+        save_db(db)
+        print("Generating site...")
+        generate_site(db)
+        rankings = calculate_rankings(db)
+        print(f"Done — {len(rankings)} players across {len(db['competitions'])} competitions")
+
+        if args.bucket:
+            print()
+            deploy_ns = argparse.Namespace(bucket=args.bucket, delete=False, dry_run=False)
+            cmd_deploy(deploy_ns)
+    else:
+        ids = " ".join(str(cid) for cid, _ in new)
+        print(f"\nRun with --scrape to add them, or manually: pori scrape {ids}")
 
 
 def cmd_season_list(args: argparse.Namespace) -> None:
@@ -132,9 +186,10 @@ def cmd_season_list(args: argparse.Namespace) -> None:
     from generate_site import load_config
 
     config = load_config()
-    print(f"Current: {config['current_season']}")
+    end = config.get("season_end") or "?"
+    print(f"Current: {config['current_season']} (päättyy {end})")
     for s in config.get("seasons", []):
-        print(f"  Archived: {s['name']} ({s['slug']}/)")
+        print(f"  Archived: {s['name']} ({s['slug']}/")
 
 
 def main() -> None:
@@ -152,6 +207,13 @@ def main() -> None:
     # rebuild
     p_rebuild = sub.add_parser("rebuild", help="Regenerate site from existing data")
     p_rebuild.set_defaults(func=cmd_rebuild)
+
+    # discover
+    p_discover = sub.add_parser("discover", help="Find new Viikkokisat Pori competitions on tspool.fi")
+    p_discover.add_argument("--filter", default="Viikkokisat Pori", help="Name filter (default: 'Viikkokisat Pori')")
+    p_discover.add_argument("--scrape", action="store_true", help="Automatically scrape and add found competitions")
+    p_discover.add_argument("--bucket", help="S3 bucket to deploy to after scraping")
+    p_discover.set_defaults(func=cmd_discover)
 
     # deploy
     p_deploy = sub.add_parser("deploy", help="Upload site and data to S3")
@@ -174,6 +236,7 @@ def main() -> None:
 
     p_season_new = season_sub.add_parser("new", help="Archive current season and start a new one")
     p_season_new.add_argument("name", help="New season name (e.g. 'Syksy 2026')")
+    p_season_new.add_argument("--start", help="Season start date YYYY-MM-DD (default: today)", default=None)
     p_season_new.set_defaults(func=cmd_season_new)
 
     p_season_list = season_sub.add_parser("list", help="List all seasons")

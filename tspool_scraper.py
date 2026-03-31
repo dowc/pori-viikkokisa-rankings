@@ -105,6 +105,40 @@ def fetch_page(url: str) -> BeautifulSoup:
     return BeautifulSoup(resp.text, "html.parser")
 
 
+def scrape_listing(name_filter: str = "Viikkokisat Pori", stop_at_id: int = 0, max_pages: int = 10) -> list[tuple[int, str]]:
+    """Scrape the menneet listing and return (comp_id, name) pairs matching name_filter.
+
+    Stops as soon as it encounters a competition ID <= stop_at_id (listings are newest-first).
+    """
+    results = []
+    url = f"{BASE_URL}/kisat/menneet/"
+
+    for _ in range(max_pages):
+        soup = fetch_page(url)
+        done = False
+        for a in soup.find_all("a", href=re.compile(r"^/kisa/\d+/$")):
+            m = re.search(r"/kisa/(\d+)/$", a["href"])
+            if not m:
+                continue
+            comp_id = int(m.group(1))
+            if stop_at_id and comp_id <= stop_at_id:
+                done = True
+                break
+            text = a.get_text(strip=True)
+            name = text.split(" - ", 1)[-1] if " - " in text else text
+            if name_filter.lower() in name.lower():
+                results.append((comp_id, name))
+
+        if done:
+            break
+        next_link = soup.find("a", string=re.compile(r"Seuraava"))
+        if not next_link:
+            break
+        url = BASE_URL + next_link["href"]
+
+    return results
+
+
 def scrape_info(comp_id: int) -> CompetitionInfo:
     """Scrape competition metadata from the info page."""
     soup = fetch_page(f"{BASE_URL}/kisa/{comp_id}/")
