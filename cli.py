@@ -161,6 +161,9 @@ def cmd_discover(args: argparse.Namespace) -> None:
         for cid, name in new:
             print(f"Scraping {cid}: {name}...")
             result = scrape_competition(cid)
+            if not result.standings:
+                print(f"  Skipping — no standings (competition not played)")
+                continue
             db["competitions"][str(cid)] = {
                 "info": asdict(result.info),
                 "matches": [asdict(m) for m in result.matches],
