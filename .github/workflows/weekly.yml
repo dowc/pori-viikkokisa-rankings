@@ -2,7 +2,7 @@ name: Weekly update
 
 on:
   schedule:
-    - cron: '0 10 * * 2'  # Every Tuesday at 10:00 UTC (12:00 Finnish time EEST)
+    - cron: '0 9 * * 2'  # Every Tuesday at 09:00 UTC (11:00 Finnish time EEST)
   workflow_dispatch:        # Allow manual trigger from GitHub UI
 
 jobs:
