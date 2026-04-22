@@ -140,6 +140,27 @@ TAILWIND_HEAD = """\
 <script src="https://cdn.tailwindcss.com"></script>"""
 
 
+_FI_MONTHS = {
+    "tammikuuta": 1, "helmikuuta": 2, "maaliskuuta": 3, "huhtikuuta": 4,
+    "toukokuuta": 5, "kesäkuuta": 6, "heinäkuuta": 7, "elokuuta": 8,
+    "syyskuuta": 9, "lokakuuta": 10, "marraskuuta": 11, "joulukuuta": 12,
+}
+
+
+def _parse_fi_date(s: str | None) -> str:
+    """Parse Finnish date string (e.g. '23. maaliskuuta 2026') into sortable ISO string."""
+    if not s:
+        return ""
+    parts = s.split()
+    if len(parts) == 3:
+        day = parts[0].rstrip(".")
+        month = _FI_MONTHS.get(parts[1].lower())
+        year = parts[2]
+        if day.isdigit() and month and year.isdigit():
+            return f"{year}-{month:02d}-{int(day):02d}"
+    return s
+
+
 def _fmt_date(s: str | None) -> str:
     """Convert YYYY-MM-DD to Finnish DD.MM.YYYY format."""
     if not s:
@@ -181,10 +202,10 @@ def generate_index_html(
                     <td class="py-3 px-2 sm:px-4 text-center font-medium" style="background:#CD7F3233">{p['podiums'][3]}</td>
                 </tr>"""
 
-    # Competition list (sorted latest first by date, fallback by ID)
+    # Competition list (sorted latest first by date)
     comps_sorted = sorted(
         db["competitions"].items(),
-        key=lambda x: x[1]["info"].get("date") or "",
+        key=lambda x: _parse_fi_date(x[1]["info"].get("date")),
         reverse=True,
     )
 
