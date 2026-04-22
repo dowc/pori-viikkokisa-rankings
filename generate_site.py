@@ -122,7 +122,7 @@ def calculate_rankings(db: dict) -> list[dict]:
 
     ranked = sorted(
         players.values(),
-        key=lambda p: (-p["total_points"], p["best_finish"], -p["competitions"]),
+        key=lambda p: (-p["total_points"], -p["podiums"][1], -p["podiums"][2], -p["podiums"][3], -p["competitions"]),
     )
 
     for i, p in enumerate(ranked, 1):
