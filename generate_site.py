@@ -298,8 +298,8 @@ def generate_index_html(
             <div class="flex flex-wrap gap-4 mt-2">
                 <p class="text-xs text-gray-400">Pisteet: 1.=8, 2.=7, 3.-4.=6, 5.-6.=5, 7.-8.=4, 9.-12.=3, 13.-16.=2</p>
                 <div class="flex gap-3 text-xs text-gray-500">
-                    <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm" style="background:#22c55e40"></span> Top 4: Sijoitetaan finaalitapahtuman kaavioon</span>
                     <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm" style="background:#3b82f640"></span> Top 12: Pääsee mukaan kauden finaalitapahtumaan</span>
+                    <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm" style="background:#22c55e40"></span> Top 4: Sijoitetaan finaalitapahtuman kaavioon</span>
                 </div>
             </div>
         </section>
