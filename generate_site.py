@@ -190,13 +190,19 @@ def generate_index_html(
     # Rankings table rows
     ranking_rows = ""
     for p in rankings:
+        if p['rank'] <= 4:
+            cell_style = "background:#22c55e18"
+        elif p['rank'] <= 12:
+            cell_style = "background:#3b82f618"
+        else:
+            cell_style = ""
         ranking_rows += f"""
                 <tr class="border-b border-gray-100 hover:bg-gray-50">
-                    <td class="py-3 px-2 sm:px-4 font-semibold text-gray-500">{p['rank']}</td>
-                    <td class="py-3 px-2 sm:px-4 font-medium text-gray-900">{_html_escape(p['player'])}</td>
-                    <td class="py-3 px-2 sm:px-4 text-center font-bold text-indigo-600">{p['total_points']}</td>
-                    <td class="py-3 px-2 sm:px-4 text-center text-gray-600 hidden sm:table-cell">{p['competitions']}</td>
-                    <td class="py-3 px-2 sm:px-4 text-center text-gray-600 hidden sm:table-cell">{p['avg_points']}</td>
+                    <td class="py-3 px-2 sm:px-4 font-semibold text-gray-500" style="{cell_style}">{p['rank']}</td>
+                    <td class="py-3 px-2 sm:px-4 font-medium text-gray-900" style="{cell_style}">{_html_escape(p['player'])}</td>
+                    <td class="py-3 px-2 sm:px-4 text-center font-bold text-indigo-600" style="{cell_style}">{p['total_points']}</td>
+                    <td class="py-3 px-2 sm:px-4 text-center text-gray-600 hidden sm:table-cell" style="{cell_style}">{p['competitions']}</td>
+                    <td class="py-3 px-2 sm:px-4 text-center text-gray-600 hidden sm:table-cell" style="{cell_style}">{p['avg_points']}</td>
                     <td class="py-3 px-2 sm:px-4 text-center font-medium" style="background:#FFD70033">{p['podiums'][1]}</td>
                     <td class="py-3 px-2 sm:px-4 text-center font-medium" style="background:#C0C0C033">{p['podiums'][2]}</td>
                     <td class="py-3 px-2 sm:px-4 text-center font-medium" style="background:#CD7F3233">{p['podiums'][3]}</td>
@@ -289,7 +295,13 @@ def generate_index_html(
                     </tbody>
                 </table>
             </div>
-            <p class="text-xs text-gray-400 mt-2">Pisteet: 1.=8, 2.=7, 3.-4.=6, 5.-6.=5, 7.-8.=4, 9.-12.=3, 13.-16.=2</p>
+            <div class="flex flex-wrap gap-4 mt-2">
+                <p class="text-xs text-gray-400">Pisteet: 1.=8, 2.=7, 3.-4.=6, 5.-6.=5, 7.-8.=4, 9.-12.=3, 13.-16.=2</p>
+                <div class="flex gap-3 text-xs text-gray-500">
+                    <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm" style="background:#22c55e40"></span> Top 4: Sijoitetaan finaalitapahtuman kaavioon</span>
+                    <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm" style="background:#3b82f640"></span> Top 12: Pääsee mukaan kauden finaalitapahtumaan</span>
+                </div>
+            </div>
         </section>
 
         <section>
