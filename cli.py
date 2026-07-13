@@ -38,6 +38,10 @@ def cmd_scrape(args: argparse.Namespace) -> None:
             "matches": [asdict(m) for m in result.matches],
             "standings": [asdict(s) for s in result.standings],
         }
+        if args.exclude_from_rankings:
+            db["competitions"][str(comp_id)]["exclude_from_rankings"] = True
+        if args.season_finale:
+            db["competitions"][str(comp_id)]["season_finale"] = True
         print(f"  Added: {result.info.name} ({len(result.standings)} players, {len(result.matches)} matches)")
 
     save_db(db)
@@ -78,7 +82,7 @@ def cmd_deploy(args: argparse.Namespace) -> None:
 def cmd_run(args: argparse.Namespace) -> None:
     """Full pipeline: scrape → generate → deploy."""
     # Scrape
-    scrape_ns = argparse.Namespace(competition_ids=args.competition_ids)
+    scrape_ns = argparse.Namespace(competition_ids=args.competition_ids, exclude_from_rankings=False, season_finale=False)
     cmd_scrape(scrape_ns)
 
     # Deploy
@@ -102,7 +106,7 @@ def cmd_season_new(args: argparse.Namespace) -> None:
     new_name = args.name
 
     start = date.fromisoformat(args.start) if args.start else date.today()
-    end = start + timedelta(weeks=16)
+    end = start + timedelta(weeks=15)  # season_end = date of the 16th (last) weekly competition
 
     # Check for slug collision
     existing_slugs = {s["slug"] for s in config.get("seasons", [])}
@@ -135,13 +139,25 @@ def cmd_season_new(args: argparse.Namespace) -> None:
 
 def cmd_discover(args: argparse.Namespace) -> None:
     """Find new Viikkokisat Pori competitions not yet in the database."""
+    import json
     from tspool_scraper import scrape_listing
-    from generate_site import load_db, generate_site, save_db, calculate_rankings
+    from generate_site import load_config, load_db, generate_site, save_db, calculate_rankings, DATA_DIR
     from dataclasses import asdict
     from tspool_scraper import scrape_competition
 
     db = load_db()
     known_ids = set(db["competitions"].keys())
+
+    # Include archived seasons too, so a season rollover (which resets the
+    # current db) doesn't cause already-archived competitions to be
+    # rediscovered and re-scraped into the new season.
+    config = load_config()
+    for season in config.get("seasons", []):
+        season_file = DATA_DIR / "seasons" / season["slug"] / "competitions.json"
+        if season_file.exists():
+            season_db = json.loads(season_file.read_text(encoding="utf-8"))
+            known_ids |= set(season_db["competitions"].keys())
+
     max_known_id = max((int(i) for i in known_ids), default=0)
 
     print(f"Searching tspool.fi for '{args.filter}' (after ID {max_known_id})...")
@@ -205,6 +221,10 @@ def main() -> None:
     # scrape
     p_scrape = sub.add_parser("scrape", help="Scrape competitions and regenerate site")
     p_scrape.add_argument("competition_ids", nargs="+", type=int, help="Competition ID(s)")
+    p_scrape.add_argument("--exclude-from-rankings", action="store_true",
+                           help="Add competition to the site but don't count it toward season points/standings")
+    p_scrape.add_argument("--season-finale", action="store_true",
+                           help="Mark competition as the season's final tournament (shown with a trophy badge)")
     p_scrape.set_defaults(func=cmd_scrape)
 
     # rebuild

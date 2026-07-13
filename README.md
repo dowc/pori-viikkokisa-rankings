@@ -40,7 +40,7 @@ uv run pori run 1353 1354 --bucket MY-BUCKET   # scrape + generate + deploy in o
 
 ```bash
 uv run pori season list
-uv run pori season new "Syksy 2026" --start 2026-07-07   # archive current, start new (end date = start + 16 weeks)
+uv run pori season new "Syksy 2026" --start 2026-07-07   # archive current, start new (end date = 16th weekly competition, start + 15 weeks)
 ```
 
 ### View the site locally

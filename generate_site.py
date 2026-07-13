@@ -92,6 +92,8 @@ def calculate_rankings(db: dict) -> list[dict]:
     players: dict[str, dict] = {}
 
     for comp_id, comp in db["competitions"].items():
+        if comp.get("exclude_from_rankings"):
+            continue
         for s in comp["standings"]:
             name = s["player"]
             pts = points_for_rank(s["rank"])
@@ -184,6 +186,7 @@ def generate_index_html(
     season_name: str = "Kevät 2026",
     archived_seasons: list[dict] | None = None,
     back_to_current: str | None = None,
+    season_start: str | None = None,
     season_end: str | None = None,
 ) -> str:
     """Generate the main rankings page."""
@@ -222,6 +225,12 @@ def generate_index_html(
         name = _html_escape(info.get("name") or f"Competition {comp_id}")
         location = _html_escape(info.get("location") or "")
         player_count = len(comp.get("standings", []))
+        exclude_badge = (
+            '<span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">&#127942; Kauden finaali</span>'
+            if comp.get("season_finale") else
+            '<span class="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full">Ei rankingiin</span>'
+            if comp.get("exclude_from_rankings") else ""
+        )
         comp_list += f"""
                 <a href="competitions/{comp_id}.html"
                    class="block p-4 rounded-lg border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all">
@@ -231,7 +240,10 @@ def generate_index_html(
                             <p class="text-sm text-gray-500 mt-1">{date_str}</p>
                             <p class="text-sm text-gray-400">{location}</p>
                         </div>
-                        <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">{player_count} pelaajaa</span>
+                        <div class="flex flex-col items-end gap-1">
+                            <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">{player_count} pelaajaa</span>
+                            {exclude_badge}
+                        </div>
                     </div>
                 </a>"""
 
@@ -272,7 +284,7 @@ def generate_index_html(
     <div class="max-w-5xl mx-auto px-4 py-8">{nav_html}
         <header class="mb-8">
             <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Pori Viikkokisa Ranking - {escaped_season}</h1>
-            <p class="text-gray-500 mt-1">Porin Viikkokisat{(" &middot; Kausi päättyy " + _fmt_date(season_end)) if season_end else ""} &middot; Päivitetty {_fmt_date(db.get('last_updated'))}</p>
+            <p class="text-gray-500 mt-1">Porin Viikkokisat{(" &middot; Kausi alkaa " + _fmt_date(season_start)) if season_start else ""}{(" &middot; Kausi päättyy " + _fmt_date(season_end)) if season_end else ""} &middot; Päivitetty {_fmt_date(db.get('last_updated'))}</p>
         </header>
 
         <section class="mb-10">
@@ -323,16 +335,36 @@ def generate_competition_html(comp_id: str, comp: dict, rankings: list[dict]) ->
     location = _html_escape(info.get("location") or "")
     game_type = _html_escape(info.get("game_type") or "")
     details = _html_escape(info.get("details") or "")
+    if comp.get("season_finale"):
+        exclude_banner = (
+            '<p class="mt-2 text-sm text-yellow-800 bg-yellow-100 inline-block px-3 py-1 rounded-lg">'
+            '&#127942; Kauden finaali'
+            + (' &mdash; ei lasketa kauden ranking-pisteisiin' if comp.get("exclude_from_rankings") else '')
+            + '</p>'
+        )
+    elif comp.get("exclude_from_rankings"):
+        exclude_banner = (
+            '<p class="mt-2 text-sm text-amber-700 bg-amber-100 inline-block px-3 py-1 rounded-lg">'
+            'Tätä kilpailua ei lasketa kauden ranking-pisteisiin</p>'
+        )
+    else:
+        exclude_banner = ""
 
-    # Standings with points
+    # Standings — trophies for the season finale (points don't apply), points otherwise
+    is_finale = bool(comp.get("season_finale"))
+    _TROPHIES = {1: "&#129351;", 2: "&#129352;", 3: "&#129353;"}
+    standings_header = "Mitali" if is_finale else "Pisteet"
     standings_rows = ""
     for s in comp.get("standings", []):
-        pts = points_for_rank(s["rank"])
+        if is_finale:
+            result_cell = f'<span class="text-xl">{_TROPHIES[s["rank"]]}</span>' if s["rank"] in _TROPHIES else ""
+        else:
+            result_cell = f'<span class="font-medium text-indigo-600">+{points_for_rank(s["rank"])}</span>'
         standings_rows += f"""
                 <tr class="border-b border-gray-100">
                     <td class="py-2 px-4 font-semibold text-gray-500">{s['rank']}</td>
                     <td class="py-2 px-4 text-gray-900">{_html_escape(s['player'])}</td>
-                    <td class="py-2 px-4 text-center font-medium text-indigo-600">+{pts}</td>
+                    <td class="py-2 px-4 text-center">{result_cell}</td>
                 </tr>"""
 
     # Match results grouped by round
@@ -388,6 +420,7 @@ def generate_competition_html(comp_id: str, comp: dict, rankings: list[dict]) ->
                 {"<span>Peli: " + game_type + "-ball</span>" if game_type else ""}
             </div>
             {"<p class='mt-2 text-sm text-gray-400'>" + details + "</p>" if details else ""}
+            {exclude_banner}
         </header>
 
         <section class="mb-10">
@@ -398,7 +431,7 @@ def generate_competition_html(comp_id: str, comp: dict, rankings: list[dict]) ->
                         <tr class="bg-gray-50 text-left text-sm text-gray-500 uppercase tracking-wider">
                             <th class="py-2 px-4 w-12">#</th>
                             <th class="py-2 px-4">Pelaaja</th>
-                            <th class="py-2 px-4 text-center">Pisteet</th>
+                            <th class="py-2 px-4 text-center">{standings_header}</th>
                         </tr>
                     </thead>
                     <tbody>{standings_rows}
@@ -448,7 +481,7 @@ def generate_site(db: dict) -> None:
     # Main rankings page
     index_html = generate_index_html(
         rankings, db, season_name, archived_seasons=archived_seasons,
-        season_end=config.get("season_end"),
+        season_start=config.get("season_start"), season_end=config.get("season_end"),
     )
     (SITE_DIR / "index.html").write_text(index_html, encoding="utf-8")
 
