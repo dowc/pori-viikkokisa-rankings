@@ -141,7 +141,7 @@ def cmd_discover(args: argparse.Namespace) -> None:
     """Find new Viikkokisat Pori competitions not yet in the database."""
     import json
     from tspool_scraper import scrape_listing
-    from generate_site import load_config, load_db, generate_site, save_db, calculate_rankings, DATA_DIR
+    from generate_site import load_config, load_db, generate_site, save_db, calculate_rankings, DATA_DIR, _parse_fi_date
     from dataclasses import asdict
     from tspool_scraper import scrape_competition
 
@@ -173,12 +173,18 @@ def cmd_discover(args: argparse.Namespace) -> None:
     for cid, name in new:
         print(f"  {cid}: {name}")
 
+    season_start = config.get("season_start")
+
     if args.scrape:
         for cid, name in new:
             print(f"Scraping {cid}: {name}...")
             result = scrape_competition(cid)
             if not result.standings:
                 print(f"  Skipping — no standings (competition not played)")
+                continue
+            comp_date = _parse_fi_date(result.info.date)
+            if season_start and comp_date and comp_date < season_start:
+                print(f"  Skipping — played {comp_date}, before current season start ({season_start})")
                 continue
             db["competitions"][str(cid)] = {
                 "info": asdict(result.info),
