@@ -53,7 +53,7 @@ python3 -m http.server 8080 --directory site
 ## How it works
 
 - **Incremental** — Competition results are stored in `data/competitions.json`. Only new competitions are scraped; existing ones are skipped.
-- **Points system** — 1st=8, 2nd=6, 3rd=4, 4th=3, 5th=2, 6th+=1. Shared placements receive equal points.
+- **Points system** — 1st=8, 2nd=7, 3rd-4th=6, 5th-6th=5, 7th-8th=4, 9th-12th=3, 13th+=2. Shared placements receive equal points.
 - **Static HTML** — Generated pages use Tailwind CSS (CDN) and are output to `site/`.
 
 ## Project structure
