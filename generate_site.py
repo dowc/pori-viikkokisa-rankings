@@ -20,7 +20,7 @@ from dataclasses import asdict
 from datetime import date
 from pathlib import Path
 
-from tspool_scraper import scrape_competition
+from tspool_scraper import parse_fi_date, scrape_competition
 
 # ── Config ───────────────────────────────────────────────────────────────────
 
@@ -142,25 +142,7 @@ TAILWIND_HEAD = """\
 <script src="https://cdn.tailwindcss.com"></script>"""
 
 
-_FI_MONTHS = {
-    "tammikuuta": 1, "helmikuuta": 2, "maaliskuuta": 3, "huhtikuuta": 4,
-    "toukokuuta": 5, "kesäkuuta": 6, "heinäkuuta": 7, "elokuuta": 8,
-    "syyskuuta": 9, "lokakuuta": 10, "marraskuuta": 11, "joulukuuta": 12,
-}
-
-
-def _parse_fi_date(s: str | None) -> str:
-    """Parse Finnish date string (e.g. '23. maaliskuuta 2026') into sortable ISO string."""
-    if not s:
-        return ""
-    parts = s.split()
-    if len(parts) == 3:
-        day = parts[0].rstrip(".")
-        month = _FI_MONTHS.get(parts[1].lower())
-        year = parts[2]
-        if day.isdigit() and month and year.isdigit():
-            return f"{year}-{month:02d}-{int(day):02d}"
-    return s
+_parse_fi_date = parse_fi_date
 
 
 def _fmt_date(s: str | None) -> str:

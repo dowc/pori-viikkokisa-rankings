@@ -25,6 +25,26 @@ from bs4 import BeautifulSoup, Tag
 
 BASE_URL = "https://tspool.fi"
 
+_FI_MONTHS = {
+    "tammikuuta": 1, "helmikuuta": 2, "maaliskuuta": 3, "huhtikuuta": 4,
+    "toukokuuta": 5, "kesäkuuta": 6, "heinäkuuta": 7, "elokuuta": 8,
+    "syyskuuta": 9, "lokakuuta": 10, "marraskuuta": 11, "joulukuuta": 12,
+}
+
+
+def parse_fi_date(s: str | None) -> str:
+    """Parse Finnish date string (e.g. '23. maaliskuuta 2026') into sortable ISO string."""
+    if not s:
+        return ""
+    parts = s.split()
+    if len(parts) == 3:
+        day = parts[0].rstrip(".")
+        month = _FI_MONTHS.get(parts[1].lower())
+        year = parts[2]
+        if day.isdigit() and month and year.isdigit():
+            return f"{year}-{month:02d}-{int(day):02d}"
+    return s
+
 
 # ── Data models ──────────────────────────────────────────────────────────────
 
@@ -105,10 +125,13 @@ def fetch_page(url: str) -> BeautifulSoup:
     return BeautifulSoup(resp.text, "html.parser")
 
 
-def scrape_listing(name_filter: str = "Viikkokisat Pori", stop_at_id: int = 0, max_pages: int = 10) -> list[tuple[int, str]]:
+def scrape_listing(name_filter: str = "Viikkokisat Pori", stop_before_date: str | None = None, max_pages: int = 10) -> list[tuple[int, str]]:
     """Scrape the menneet listing and return (comp_id, name) pairs matching name_filter.
 
-    Stops as soon as it encounters a competition ID <= stop_at_id (listings are newest-first).
+    Stops once an entry's date is older than stop_before_date (ISO YYYY-MM-DD). Listing
+    is sorted newest-first by play date. Competition IDs are NOT assigned in date order
+    (organizers create entries at different times relative to when they're played), so
+    IDs must not be used to decide when to stop paging — only to identify competitions.
     """
     results = []
     url = f"{BASE_URL}/kisat/menneet/"
@@ -121,11 +144,13 @@ def scrape_listing(name_filter: str = "Viikkokisat Pori", stop_at_id: int = 0, m
             if not m:
                 continue
             comp_id = int(m.group(1))
-            if stop_at_id and comp_id <= stop_at_id:
+            text = a.get_text(strip=True)
+            date_str, sep, name_part = text.partition("-")
+            entry_date = parse_fi_date(date_str.strip())
+            if stop_before_date and entry_date and entry_date < stop_before_date:
                 done = True
                 break
-            text = a.get_text(strip=True)
-            name = text.split(" - ", 1)[-1] if " - " in text else text
+            name = name_part.strip() if sep else text
             if name_filter.lower() in name.lower():
                 results.append((comp_id, name))
 

@@ -140,13 +140,13 @@ def cmd_season_new(args: argparse.Namespace) -> None:
 def cmd_discover(args: argparse.Namespace) -> None:
     """Find new Viikkokisat Pori competitions not yet in the database."""
     import json
-    from tspool_scraper import scrape_listing
-    from generate_site import load_config, load_db, generate_site, save_db, calculate_rankings, DATA_DIR, _parse_fi_date
+    from tspool_scraper import scrape_listing, parse_fi_date, scrape_competition
+    from generate_site import load_config, load_db, generate_site, save_db, calculate_rankings, DATA_DIR
     from dataclasses import asdict
-    from tspool_scraper import scrape_competition
 
     db = load_db()
     known_ids = set(db["competitions"].keys())
+    known_dates = {c["info"].get("date") for c in db["competitions"].values()}
 
     # Include archived seasons too, so a season rollover (which resets the
     # current db) doesn't cause already-archived competitions to be
@@ -157,11 +157,14 @@ def cmd_discover(args: argparse.Namespace) -> None:
         if season_file.exists():
             season_db = json.loads(season_file.read_text(encoding="utf-8"))
             known_ids |= set(season_db["competitions"].keys())
+            known_dates |= {c["info"].get("date") for c in season_db["competitions"].values()}
 
-    max_known_id = max((int(i) for i in known_ids), default=0)
+    # Competition IDs are not assigned in date order on tspool.fi, so pagination
+    # must stop based on the latest known competition's *date*, not its ID.
+    max_known_date = max((parse_fi_date(d) for d in known_dates if d), default="")
 
-    print(f"Searching tspool.fi for '{args.filter}' (after ID {max_known_id})...")
-    found = scrape_listing(name_filter=args.filter, stop_at_id=max_known_id)
+    print(f"Searching tspool.fi for '{args.filter}' (played on/after {max_known_date or 'the beginning'})...")
+    found = scrape_listing(name_filter=args.filter, stop_before_date=max_known_date or None)
 
     new = [(cid, name) for cid, name in found if str(cid) not in known_ids]
 
@@ -182,7 +185,7 @@ def cmd_discover(args: argparse.Namespace) -> None:
             if not result.standings:
                 print(f"  Skipping — no standings (competition not played)")
                 continue
-            comp_date = _parse_fi_date(result.info.date)
+            comp_date = parse_fi_date(result.info.date)
             if season_start and comp_date and comp_date < season_start:
                 print(f"  Skipping — played {comp_date}, before current season start ({season_start})")
                 continue
