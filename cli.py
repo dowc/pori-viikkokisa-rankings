@@ -177,6 +177,7 @@ def cmd_discover(args: argparse.Namespace) -> None:
         print(f"  {cid}: {name}")
 
     season_start = config.get("season_start")
+    season_end = config.get("season_end")
 
     if args.scrape:
         for cid, name in new:
@@ -188,6 +189,9 @@ def cmd_discover(args: argparse.Namespace) -> None:
             comp_date = parse_fi_date(result.info.date)
             if season_start and comp_date and comp_date < season_start:
                 print(f"  Skipping — played {comp_date}, before current season start ({season_start})")
+                continue
+            if season_end and comp_date and comp_date > season_end:
+                print(f"  Skipping — played {comp_date}, after current season end ({season_end})")
                 continue
             db["competitions"][str(cid)] = {
                 "info": asdict(result.info),
